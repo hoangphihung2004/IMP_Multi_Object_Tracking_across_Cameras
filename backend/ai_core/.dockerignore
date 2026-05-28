@@ -1,0 +1,8 @@
+pretrained/
+videos/
+.git/
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+YOLOX_outputs/

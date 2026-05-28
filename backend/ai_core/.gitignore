@@ -1,0 +1,117 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Python build / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Test / coverage / type-check caches
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache/
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.ruff_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Environments / local config
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+instance/
+local_settings.py
+
+# Editor / OS files
+.idea/
+.vscode/
+.vs/
+*.code-workspace.code-workspace
+.DS_Store
+**/.DS_Store
+.qodo/
+
+# Notebooks / interactive shells
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# Framework / app runtime files
+*.log
+db.sqlite3
+db.sqlite3-journal
+.webassets-cache/
+.scrapy/
+celerybeat-schedule
+celerybeat.pid
+
+# Documentation builds / generated docs
+docs/_build/
+/site/
+docs/api/
+doc/
+
+# ML data / model artifacts
+evaldata/
+pretrained/
+*.pkl
+*.npy
+*.pt
+*.pth
+*.pth.tar
+*.onnx
+*.engine
+*.trt
+events.out.tfevents*
+
+# Generated outputs
+YOLOX_outputs/
+visualizations/
+results/
+runs/
+logs/
+error_log.txt
+dance_detections/
+demo/
+
+# Videos / media inputs and outputs
+videos/

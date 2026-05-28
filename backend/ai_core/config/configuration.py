@@ -1,0 +1,11 @@
+YOLO_MODELS="yolo26m.pt"
+TRACKER=r"D:\DAT_Lab_Management\ai-core\config\bytetrack.yaml"
+IMAGE_SIZE=640
+CONF_THRESH=0.35
+IOU_THRESH=0.45
+KEYPOINT_THRESH=0.5
+PERSIST=True
+STREAM=True
+VERBOSE=False
+
+
