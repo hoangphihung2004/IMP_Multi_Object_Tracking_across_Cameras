@@ -1,0 +1,14 @@
+{
+  "sources": [
+    {
+      "id": 0,
+      "uri": "videos/1-1.mp4",
+      "output": "output/out_0.mp4"
+    },
+    {
+      "id": 1,
+      "uri": "videos/2-1.mp4",
+      "output": "output/out_1.mp4"
+    }
+  ]
+}

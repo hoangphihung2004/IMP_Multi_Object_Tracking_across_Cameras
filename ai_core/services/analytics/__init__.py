@@ -1,1 +1,1 @@
-# Analytics Services Package (Tracking, Counting, Mapping)
+"""Analytics services package: tracking-only runtime."""
