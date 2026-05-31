@@ -32,9 +32,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 2. PYDS — DeepStream Python Bindings (DS 7.0 / JetPack 6)
 # =========================================================
 RUN pip3 install --upgrade pip \
-    && wget -q https://github.com/NVIDIA-AI-IOT/deepstream_python_apps/releases/download/v1.1.11/pyds-1.1.11-py3-none-linux_aarch64.whl \
-    && pip3 install pyds-1.1.11-py3-none-linux_aarch64.whl \
-    && rm pyds-1.1.11-py3-none-linux_aarch64.whl
+    && wget -q https://github.com/NVIDIA-AI-IOT/deepstream_python_apps/releases/download/v1.1.11/pyds-1.1.11-py3-none-linux_x86_64.whl \
+    && pip3 install pyds-1.1.11-py3-none-linux_x86_64.whl \
+    && rm pyds-1.1.11-py3-none-linux_x86_64.whl
 
 # =========================================================
 # 3. Python Dependencies

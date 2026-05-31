@@ -1,42 +1,102 @@
-# AI Core - Jetson Deployment Guide
+# AI Core - Windows Local DeepStream Tracking
 
-Tài liệu này hướng dẫn cách sử dụng Docker trên phần cứng NVIDIA Jetson Nano nhằm hỗ trợ khả năng tăng tốc phần cứng GPU một cách tối ưu nhất.
+Tài liệu này hướng dẫn chạy `ai_core` local trên **Windows 11 + WSL2 + Docker Desktop**, giữ kiến trúc **DeepStream + YOLOX + OCSort C++**.
 
-## 🐳 Hướng dẫn chạy và thao tác với Docker
+Runtime hiện tại chỉ làm các việc sau:
 
-### Bước 1: Build Docker Image (Chạy lần đầu)
-Mở terminal trên Jetson Nano, đi đến folder `ai_core` và chạy lệnh sau để đóng gói môi trường (Quá trình này có thể tốn một khoảng thời gian tuỳ thuộc vào tốc độ mạng):
+- Đọc 2 video test trong `videos/`.
+- Chạy YOLOX detection bằng DeepStream `nvinfer`.
+- Chạy OCSort C++ tracking theo từng source.
+- Vẽ bounding box + track ID lên video.
+- Xuất 2 file mp4 vào `output/`.
+
+Các tính năng đã cắt khỏi runtime local:
+
+- Counting.
+- Mapping 2D.
+- WebSocket/backend gateway.
+- Janus/WebRTC streaming.
+- USB camera/RTSP validator.
+
+## Cấu trúc config chính
+
+```text
+config/
+├── sources_config.json      # input videos + output files
+├── pipeline_config.json     # DeepStream pipeline properties
+├── yolox_config.json        # YOLOX model/inference config
+├── ocsort_config.json       # OCSort tracking config
+├── system_config.json       # device/fp16 settings
+├── config_infer.txt         # DeepStream nvinfer config
+└── labels.txt               # label file
+```
+
+`pipeline_config.json` là nơi kiểm soát các property quan trọng của DeepStream như `nvstreammux`, decoder, encoder và output. Không chỉnh các giá trị này trực tiếp trong code nếu đã có trong config.
+
+## Chuẩn bị môi trường
+
+Yêu cầu:
+
+- Windows 11.
+- WSL2.
+- Docker Desktop bật WSL2 backend.
+- NVIDIA GPU driver hỗ trợ Docker GPU passthrough.
+
+Kiểm tra GPU trên host:
+
 ```bash
+nvidia-smi
+```
+
+## Chạy bằng Docker
+
+Từ thư mục `ai_core`:
+
+```bash
+cp .env.example .env
 docker compose build
+docker compose up
 ```
 
-### Bước 2: Khởi động hệ thống Docker (Chế độ chạy nền)
-Lệnh này sẽ kích hoạt Docker và giữ cho container luân phiên hoạt động ngầm (detached mode) nhờ lệnh `tail -f /dev/null`:
+Output sau khi chạy:
+
+```text
+output/out_0.mp4
+output/out_1.mp4
+```
+
+## Kiểm tra GPU trong container
+
 ```bash
-docker compose up -d
+docker compose run --rm ai_core nvidia-smi
 ```
 
-### Bước 3: Truy cập vào Terminal (Bash) bên trong Docker
-Đây là bước quan trọng nhất theo như thiết kế sửa đổi từ trước. Thay vì tự chạy code lúc khởi động, bạn có thể tự do "bước vào" môi trường riêng của Docker bằng lệnh:
+Kỳ vọng: thấy GPU NVIDIA của máy Windows.
+
+## Debug config
+
+Khi app khởi động, log sẽ in toàn bộ config đã nạp:
+
+- sources input/output.
+- pipeline properties.
+- YOLOX config.
+- OCSort config.
+- system config.
+
+Nếu config thiếu hoặc sai, app sẽ dừng sớm thay vì chạy với giá trị mơ hồ.
+
+## Ghi chú về WSL2 codec
+
+Pipeline ưu tiên NVIDIA elements:
+
+- `nvv4l2decoder`
+- `nvv4l2h264enc`
+
+Nếu WSL2 không hỗ trợ codec phần cứng đúng như môi trường Jetson/Linux, cần kiểm tra bằng:
+
 ```bash
-docker exec -it dat_lab_aicore /bin/bash
+gst-inspect-1.0 nvv4l2decoder
+gst-inspect-1.0 nvv4l2h264enc
 ```
 
-> **Mẹo:**
-> - Ngay sau khi vào, bạn sẽ đứng ở thư mục `/workspace/ai_core` (nơi chứa toàn bộ mã nguồn).
-> - Từ đây, bạn có thể chủ động gõ `python3 main.py` để test, dùng lệnh `pip install ...` hoặc chỉnh sửa file. Do thư mục này được ánh xạ (mount) trực tiếp với máy tính gốc, code chạy sẽ ăn ngay lập tức.
-> - Nếu muốn thoát môi trường Docker về lại Jetson Nano, hãy gõ lệnh `exit`.
-
----
-
-## Các lệnh hỗ trợ khác (Quản lý tiến trình)
-- **Xem dòng chữ in ra màn hình (Logs):** Hữu ích nếu sau này bạn đổi ý chạy thẳng code python lúc khởi động `CMD` mà không muốn chui vào Terminal:
-  ```bash
-  docker logs -f dat_lab_aicore
-  ```
-  *(Nhấn `Ctrl + C` để thoát màn hình xem log)*
-
-- **Dập, tắt và xóa container (Khi không dùng nữa):**
-  ```bash
-  docker compose down
-  ```
+Nếu cần fallback, sửa trong `config/pipeline_config.json`, không hardcode trong `services/pipeline/manager.py`.

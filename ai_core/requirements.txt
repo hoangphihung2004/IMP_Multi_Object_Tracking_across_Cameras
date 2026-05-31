@@ -36,9 +36,6 @@ onnx>=1.14
 onnxruntime
 onnx-simplifier
 
-# --- WebSocket Gateway ---
-websocket-client
-
 # --- Build Tools ---
 cython
 pycocotools

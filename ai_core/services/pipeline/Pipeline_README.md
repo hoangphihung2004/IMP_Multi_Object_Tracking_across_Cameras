@@ -1,66 +1,78 @@
-# PipelineManager: Multi-Branch DeepStream Orchestrator
+# PipelineManager: Local Two-Source DeepStream Pipeline
 
-## 1. Responsibilities
-- **Multi-Branch Architecture**: Manages a complex pipeline with a main analytics branch and a streaming branch.
-- **Hardware-Accelerated Scaling & Encoding**: Scales the stream to 720p and encodes to H.264 using Jetson's NVENC.
-- **RTP/UDP Streaming**: Transmits the live processed video with OSD overlays to a Janus Gateway.
-- **Service Lifecycle**: Handles `start()`, `stop()`, and graceful signal management (SIGINT/SIGTERM).
+Tài liệu này mô tả pipeline runtime local sau khi cắt backend, counting, mapping và Janus/WebRTC.
+
+## 1. Trách nhiệm
+
+`PipelineManager` chịu trách nhiệm:
+
+- Tạo 2 input branches từ video files.
+- Gom 2 stream vào `nvstreammux` với batch size đọc từ config.
+- Chạy YOLOX qua `nvinfer`.
+- Tách stream bằng `nvstreamdemux`.
+- Ghi mỗi stream ra một file mp4 riêng.
+- Quản lý lifecycle: build, attach probe, run, stop.
 
 ## 2. Pipeline Structure
+
 ```mermaid
 graph TD
-    Src[Source: File/V4L2/RTSP] --> Dec[nvv4l2decoder]
-    Dec --> Mux[nvstreammux]
+    Src0[filesrc: videos/1-1.mp4] --> Demux0[qtdemux]
+    Demux0 --> Parse0[h264parse]
+    Parse0 --> Dec0[nvv4l2decoder]
+
+    Src1[filesrc: videos/2-1.mp4] --> Demux1[qtdemux]
+    Demux1 --> Parse1[h264parse]
+    Parse1 --> Dec1[nvv4l2decoder]
+
+    Dec0 --> Mux[nvstreammux batch=2]
+    Dec1 --> Mux
     Mux --> Infer[nvinfer: YOLOX]
-    Infer -->|Probe Attachment| Conv1[nvvideoconvert]
-    Conv1 --> OSD[nvdsosd]
-    OSD --> Tee{Tee}
+    Infer --> Probe[AnalyticsProbe: OCSort per source]
+    Probe --> StreamDemux[nvstreamdemux]
 
-    subgraph "Main Branch (Analytics)"
-        Tee --> Q1[queue]
-        Q1 --> Sink[fakesink]
-    end
+    StreamDemux --> Q0[queue]
+    Q0 --> Conv0[nvvideoconvert]
+    Conv0 --> OSD0[nvdsosd]
+    OSD0 --> Enc0[nvv4l2h264enc]
+    Enc0 --> OutParse0[h264parse]
+    OutParse0 --> Mux0[qtmux]
+    Mux0 --> Sink0[filesink: output/out_0.mp4]
 
-    subgraph "Janus Streaming Branch (720p H.264)"
-        Tee --> Q2[queue]
-        Q2 --> Scale[nvvidconv-scaler]
-        Scale --> Caps[capsfilter: 720p]
-        Caps --> Enc[nvv4l2h264enc]
-        Enc --> Parse[h264parse]
-        Parse --> Pay[rtph264pay]
-        Pay --> UDP[udpsink: Janus Port]
-    end
+    StreamDemux --> Q1[queue]
+    Q1 --> Conv1[nvvideoconvert]
+    Conv1 --> OSD1[nvdsosd]
+    OSD1 --> Enc1[nvv4l2h264enc]
+    Enc1 --> OutParse1[h264parse]
+    OutParse1 --> Mux1[qtmux]
+    Mux1 --> Sink1[filesink: output/out_1.mp4]
 ```
 
-## 3. Janus Branch Configuration
-The Janus branch is designed for high-performance low-latency streaming:
-- **Scaling**: Downscales to 1280x720 to reduce network bandwidth.
-- **Encoder**: `nvv4l2h264enc` with a target bitrate of 4Mbps.
-- **Protocol**: RTP over UDP, compatible with Janus/WebRTC streaming plugins.
+## 3. Config-driven properties
 
-## 4. Key Implementation Details
-- **`_link` Helper**: Used to connect elements with strict error checking to prevent silent link failures.
-- **Dynamic Linking**: Supports `qtdemux` for MP4/RTSP files via the `pad-added` signal.
-- **Environment Variables**:
-    - `JANUS_HOST`: IP address of the Janus server.
-    - `JANUS_PORT`: Target UDP port.
+Pipeline properties are controlled by:
 
-## 5. Usage Example
+- `config/sources_config.json`
+- `config/pipeline_config.json`
+- `config/yolox_config.json`
 
-```python
-from services.pipeline.manager import PipelineManager
-from services.pipeline.probe import AnalyticsProbe
+Không hardcode input/output path, width/height, batch size hoặc bitrate trong `manager.py`.
 
-manager = PipelineManager()
-manager.build_pipeline(
-    source_uri="rtsp://...",
-    config_infer="config/config_infer.txt"
-)
+## 4. Runtime outputs
 
-# Attach logic
-probe = AnalyticsProbe(...)
-manager.attach_probe(probe)
+Kết quả nằm ở:
 
-# Run
-manager.run()
+```text
+output/out_0.mp4
+output/out_1.mp4
 ```
+
+## 5. Không còn dùng
+
+Pipeline local không còn:
+
+- Janus/WebRTC branch.
+- UDP/RTP streaming.
+- Backend WebSocket.
+- Counting line OSD.
+- Mapping overlay.

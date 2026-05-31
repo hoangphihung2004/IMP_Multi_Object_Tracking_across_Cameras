@@ -1,33 +1,35 @@
-# C++ DeepStream Plugins
+# C++ / CUDA DeepStream Plugins
 
-This directory contains high-performance C++ and CUDA components designed to offload heavy computation from the Python service layer to the Jetson hardware.
+Thư mục này chứa các plugin C++/CUDA dùng bởi runtime DeepStream.
 
-## Architecture
+## Thành phần
 
-To achieve real-time performance (>50 FPS), critical tasks that involve pixel-level manipulation or large-scale array decoding are implemented as compiled C++ shared libraries (.so). 
+- `ocsort/`: OCSort C++ engine và C API để Python gọi qua `ctypes`.
+- `yolox_parser/`: custom bounding-box parser cho DeepStream `nvinfer`.
+- `preprocess/`: custom CUDA preprocess plugin.
 
-These plugins integrate directly into the NVIDIA DeepStream SDK pipeline.
+## Vai trò trong runtime local
 
-## Directory Structure
+Runtime Windows + WSL2 + Docker vẫn giữ các plugin này:
 
-- **`preprocess/`**: Contains the custom CUDA kernel for ImageNet normalization. This ensures that input frames match the exact pre-processing requirements of the YOLOX model.
-- **`yolox_parser/`**: Contains the custom bounding box parser for DeepStream's `nvinfer` element. It decodes the raw model output tensors into standard DeepStream `NvDsObjectMeta`.
+- YOLOX chạy qua DeepStream/TensorRT.
+- OCSort C++ xử lý tracking.
+- Python chỉ điều phối pipeline và metadata.
 
-## Key Benefits
+## Build
 
-1.  **Zero-Latency Normalization**: By performing ImageNet normalization (`mean/std`) directly on the GPU using CUDA, we avoid expensive CPU-GPU memory transfers and Python-level loop overhead.
-2.  **Hardware-Accelerated Parsing**: Decoding thousands of bounding box proposals and performing Non-Maximum Suppression (NMS) in C++ ensures the host CPU remains free for business logic services.
-3.  **Accuracy Parity**: These plugins use the exact same mathematical constants as the original PyTorch/Python implementation, ensuring 100% accuracy matching.
-
-## Building the Plugins
-
-Each subdirectory contains its own `CMakeLists.txt`. To build:
+Dockerfile tự build các plugin này khi tạo image:
 
 ```bash
-cd cpp_plugins/<sub_dir>
-mkdir build && cd build
+cd cpp_plugins/<plugin>
+mkdir -p build
+cd build
 cmake ..
-make
+make -j$(nproc)
 ```
 
-The resulting `.so` file can then be referenced in the DeepStream `config_infer.txt` or loaded dynamically by the Python `PipelineManager`.
+Các file `.so` sau khi build được copy vào:
+
+```text
+cpp_plugins/lib/
+```
