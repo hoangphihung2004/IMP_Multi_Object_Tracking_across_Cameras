@@ -1,7 +1,7 @@
 """
 Base abstractions for analytics services.
 
-Sau khi cắt counting/mapping/backend, AI Core chỉ còn tracking trong runtime local.
+After removing counting/mapping/backend integration, AI Core only keeps tracking in the local runtime.
 """
 
 from abc import ABC, abstractmethod
@@ -17,7 +17,7 @@ class BaseTrackingService(ABC):
 
     @abstractmethod
     def __init__(self, config: OCSortConfig) -> None:
-        """Khởi tạo tracking service từ OCSortConfig."""
+        """Initialize the tracking service from OCSortConfig."""
         pass
 
     @abstractmethod
@@ -28,12 +28,12 @@ class BaseTrackingService(ABC):
         img_size: Tuple[int, int],
     ) -> np.ndarray:
         """
-        Update tracker với detections mới.
+        Update the tracker with new detections.
 
         Args:
             detections: Array [x1, y1, x2, y2, score, class_id].
-            img_info: Kích thước frame gốc (width, height).
-            img_size: Kích thước frame đầu vào tracker (width, height).
+            img_info: Original frame size (width, height).
+            img_size: Tracker input frame size (width, height).
 
         Returns:
             Array [x1, y1, x2, y2, track_id, class_id, score].

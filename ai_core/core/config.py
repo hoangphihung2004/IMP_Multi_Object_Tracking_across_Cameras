@@ -80,7 +80,7 @@ class SourceConfig(BaseModel):
     def validate_uri(cls, value: str) -> str:
         """Only local video files are supported in Windows local runtime."""
         if value.startswith(("rtsp://", "/dev/video")):
-            raise ValueError("Windows local runtime chỉ hỗ trợ file video, không hỗ trợ RTSP/USB camera.")
+            raise ValueError("Windows local runtime only supports video files; RTSP/USB camera inputs are not supported.")
         return value
 
 
@@ -96,7 +96,7 @@ class SourcesConfig(BaseModel):
         """Ensure source IDs are unique."""
         ids = [source.id for source in self.sources]
         if len(ids) != len(set(ids)):
-            raise ValueError(f"Source id bị trùng: {ids}")
+            raise ValueError(f"Duplicate source ids: {ids}")
         return self
 
     def validate_files_exist(self, base_dir: str = ".") -> None:
@@ -104,7 +104,7 @@ class SourcesConfig(BaseModel):
         for source in self.sources:
             input_path = Path(base_dir) / source.uri
             if not input_path.is_file():
-                raise FileNotFoundError(f"Video source không tồn tại: {source.uri}")
+                raise FileNotFoundError(f"Video source does not exist: {source.uri}")
             output_path = Path(base_dir) / source.output
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -218,7 +218,7 @@ class ConfigManager:
         source_count = len(sources_cfg.sources)
         batch_size = pipeline_cfg.muxer.batch_size
         if source_count != batch_size:
-            raise ValueError(f"Số source ({source_count}) phải bằng muxer.batch_size ({batch_size}).")
+            raise ValueError(f"Source count ({source_count}) must match muxer.batch_size ({batch_size}).")
 
     @staticmethod
     def log_loaded_config(

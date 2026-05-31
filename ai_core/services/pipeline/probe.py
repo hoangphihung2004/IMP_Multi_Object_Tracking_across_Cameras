@@ -22,7 +22,7 @@ from services.analytics.tracking_service import TrackingService
 
 
 class AnalyticsProbe:
-    """Pad probe xử lý tracking và vẽ metadata cho từng source."""
+    """Pad probe that runs tracking and injects metadata for each source."""
 
     def __init__(
         self,
@@ -42,7 +42,7 @@ class AnalyticsProbe:
 
     @staticmethod
     def _generate_palette(n: int) -> List[tuple]:
-        """Sinh bảng màu tương phản cho track IDs."""
+        """Generate a high-contrast color palette for track IDs."""
         golden_angle = 0.618033988749895
         palette = []
         for index in range(n):
@@ -79,7 +79,7 @@ class AnalyticsProbe:
         return Gst.PadProbeReturn.OK
 
     def _process_frame_meta(self, frame_meta, batch_meta) -> None:
-        """Extract detections, chạy tracker đúng source, inject OSD boxes."""
+        """Extract detections, run the matching source tracker, and inject OSD boxes."""
         source_id = int(frame_meta.source_id)
         frame_id = int(frame_meta.frame_num)
 
@@ -105,7 +105,7 @@ class AnalyticsProbe:
         self._update_fps(source_id, frame_id, len(detections), len(filtered_tracks))
 
     def _extract_detections(self, frame_meta) -> List[List[float]]:
-        """Lấy raw detections từ DeepStream metadata và ẩn box YOLO gốc."""
+        """Extract raw detections from DeepStream metadata and hide original YOLO boxes."""
         detections: List[List[float]] = []
         l_obj = frame_meta.obj_meta_list
 
@@ -135,7 +135,7 @@ class AnalyticsProbe:
         return detections
 
     def _filter_tracks(self, tracked_objects: np.ndarray) -> np.ndarray:
-        """Áp dụng filter aspect ratio/min area sau OCSort."""
+        """Apply aspect-ratio and min-area filters after OCSort."""
         if len(tracked_objects) == 0:
             return np.empty((0, 7), dtype=np.float32)
 
@@ -158,7 +158,7 @@ class AnalyticsProbe:
         return np.array(filtered, dtype=np.float32)
 
     def _sync_track_ids(self, frame_meta, batch_meta, tracked_objects: np.ndarray) -> None:
-        """Inject NvDsObjectMeta mới với OCSort track IDs và màu theo ID."""
+        """Inject new NvDsObjectMeta entries with OCSort track IDs and per-ID colors."""
         if not self.osd_config.enabled:
             return
 
@@ -200,7 +200,7 @@ class AnalyticsProbe:
             pyds.nvds_add_obj_meta_to_frame(frame_meta, obj_meta, None)
 
     def _update_fps(self, source_id: int, frame_id: int, num_detections: int, num_tracks: int) -> None:
-        """Log FPS định kỳ theo từng source."""
+        """Log FPS periodically for each source."""
         self.frame_counts[source_id] = self.frame_counts.get(source_id, 0) + 1
         if self.frame_counts[source_id] % 30 != 0:
             return

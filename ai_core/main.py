@@ -26,10 +26,10 @@ from services.pipeline.probe import AnalyticsProbe
 
 
 class AuraAnalyticsApp:
-    """Ứng dụng chính cho local DeepStream tracking runtime."""
+    """Main application for the local DeepStream tracking runtime."""
 
     def __init__(self) -> None:
-        """Load config và chuẩn bị pipeline manager."""
+        """Load configuration and prepare the pipeline manager."""
         self.pipeline_manager = PipelineManager()
         self.services: Dict[str, object] = {}
 
@@ -49,7 +49,7 @@ class AuraAnalyticsApp:
         )
 
     def _setup_services(self) -> None:
-        """Khởi tạo tracking service riêng cho từng source."""
+        """Initialize one tracking service per source."""
         logger.info("[App] Initializing tracking services...")
         self.services["tracking"] = {
             source.id: TrackingService(config=self.ocsort_cfg)
@@ -58,7 +58,7 @@ class AuraAnalyticsApp:
         logger.success(f"[App] Initialized {len(self.services['tracking'])} tracker instances.")
 
     def _setup_pipeline(self) -> None:
-        """Dựng DeepStream pipeline và attach tracking probe."""
+        """Build the DeepStream pipeline and attach the tracking probe."""
         probe = AnalyticsProbe(
             tracking_services=self.services["tracking"],
             tracking_config=self.ocsort_cfg,
