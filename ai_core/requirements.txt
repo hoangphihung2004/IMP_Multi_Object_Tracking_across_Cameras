@@ -1,0 +1,45 @@
+# =========================================================
+# ai_core — Python Dependencies
+# =========================================================
+# NOTE: torch/torchvision come pre-installed in the
+#       nvcr.io/nvidia/deepstream:7.0-triton-multiarch image.
+#       Do NOT list them here to avoid version conflicts.
+# =========================================================
+
+# --- Core ---
+numpy>=1.23,<2.0
+loguru
+pydantic>=2.5.0
+python-dotenv
+torch
+torchvision
+onnxscript
+
+# --- YOLOX Dependencies ---
+scikit-image
+tqdm
+Pillow
+thop
+tabulate
+ninja
+
+# --- OCSort / Tracking ---
+lap
+filterpy
+h5py
+
+# --- OpenCV (headless — no GUI on Jetson) ---
+opencv-python-headless
+
+# --- ONNX (PTH → ONNX export on device) ---
+onnx>=1.14
+onnxruntime
+onnx-simplifier
+
+# --- WebSocket Gateway ---
+websocket-client
+
+# --- Build Tools ---
+cython
+pycocotools
+cython_bbox

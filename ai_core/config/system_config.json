@@ -1,0 +1,4 @@
+{
+    "device": "gpu",
+    "fp16": true
+}

@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  ai_core:
+    image: manhmitcf/dat_lab_management_aicore:deploy
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dat_lab_deepstream
+    runtime: nvidia
+    restart: unless-stopped
+    entrypoint: ["bash", "/workspace/ai_core/docker_entrypoint.sh"]
+    command: ["python3", "main.py"]
+
+    # Load env from config/.env
+    env_file:
+      - ./.env
+
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+
+    volumes:
+      - .:/workspace/ai_core
+    devices:
+      # USB Camera (adjust if using CSI or different port)
+      - /dev/video0:/dev/video0
+
+    # Host network — required for Janus UDP/RTP streaming
+    network_mode: "host"
