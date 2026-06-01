@@ -13,7 +13,6 @@ from loguru import logger
 try:
     from dotenv import load_dotenv
 
-    load_dotenv("config/.env")
     load_dotenv()
 except ImportError:
     pass
