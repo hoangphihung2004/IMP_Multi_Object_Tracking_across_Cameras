@@ -11,8 +11,6 @@ numpy>=1.23,<2.0
 loguru
 pydantic>=2.5.0
 python-dotenv
-torch
-torchvision
 onnxscript
 
 # --- YOLOX Dependencies ---
@@ -22,6 +20,7 @@ Pillow
 thop
 tabulate
 ninja
+numba
 
 # --- OCSort / Tracking ---
 lap

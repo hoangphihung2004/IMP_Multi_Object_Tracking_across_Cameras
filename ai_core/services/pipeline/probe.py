@@ -5,7 +5,6 @@ Tracking-only runtime: extract detections, run OCSort per source, inject OSD met
 """
 
 import colorsys
-import time
 from typing import Dict, List
 
 import gi
@@ -19,6 +18,8 @@ from loguru import logger
 
 from core.config import OCSortConfig, OsdConfig
 from services.analytics.tracking_service import TrackingService
+from services.pipeline.overlay import RuntimeOverlayRenderer
+from services.pipeline.runtime_stats import RuntimeStatsManager
 
 
 class AnalyticsProbe:
@@ -34,11 +35,8 @@ class AnalyticsProbe:
         self.tracking_config = tracking_config
         self.osd_config = osd_config
         self.color_palette = self._generate_palette(256)
-        self.frame_counts: Dict[int, int] = {source_id: 0 for source_id in tracking_services}
-        self.fps_start_times: Dict[int, float] = {
-            source_id: time.time() for source_id in tracking_services
-        }
-        self.current_fps: Dict[int, float] = {source_id: 0.0 for source_id in tracking_services}
+        self.stats_manager = RuntimeStatsManager(tracking_services.keys())
+        self.overlay_renderer = RuntimeOverlayRenderer(osd_config)
 
     @staticmethod
     def _generate_palette(n: int) -> List[tuple]:
@@ -102,7 +100,8 @@ class AnalyticsProbe:
         if len(filtered_tracks) > 0:
             self._sync_track_ids(frame_meta, batch_meta, filtered_tracks)
 
-        self._update_fps(source_id, frame_id, len(detections), len(filtered_tracks))
+        stats = self.stats_manager.update(source_id, frame_id, len(detections), len(filtered_tracks))
+        self.overlay_renderer.render(batch_meta, frame_meta, stats)
 
     def _extract_detections(self, frame_meta) -> List[List[float]]:
         """Extract raw detections from DeepStream metadata and hide original YOLO boxes."""
@@ -198,20 +197,3 @@ class AnalyticsProbe:
             text.text_bg_clr.set(color[0], color[1], color[2], 0.6)
 
             pyds.nvds_add_obj_meta_to_frame(frame_meta, obj_meta, None)
-
-    def _update_fps(self, source_id: int, frame_id: int, num_detections: int, num_tracks: int) -> None:
-        """Log FPS periodically for each source."""
-        self.frame_counts[source_id] = self.frame_counts.get(source_id, 0) + 1
-        if self.frame_counts[source_id] % 30 != 0:
-            return
-
-        now = time.time()
-        elapsed = now - self.fps_start_times[source_id]
-        fps = 30.0 / elapsed if elapsed > 0 else 0.0
-        self.current_fps[source_id] = fps
-        self.fps_start_times[source_id] = now
-
-        logger.info(
-            f"[Probe] source={source_id} frame={frame_id} fps={fps:.1f} "
-            f"detections={num_detections} tracks={num_tracks}"
-        )

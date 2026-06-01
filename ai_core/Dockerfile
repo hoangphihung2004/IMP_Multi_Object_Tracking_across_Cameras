@@ -12,13 +12,17 @@ WORKDIR /workspace/ai_core
 # =========================================================
 # 1. System Dependencies (least frequent change → cached)
 # =========================================================
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN rm -f /etc/apt/sources.list.d/*librealsense* \
+    && apt-get update && apt-get install -y --no-install-recommends \
     # Build Tools
     wget git cmake curl build-essential pkg-config \
     # Python Core
     python3-pip python3-dev \
-    # GStreamer Python Bindings (pyds/gi)
+    # GStreamer Python Bindings (pyds/gi) + WSL2 software codec fallback
     python3-gi python3-gst-1.0 gir1.2-gst-plugins-base-1.0 \
+    gstreamer1.0-libav gstreamer1.0-plugins-ugly \
+    libavcodec58 libavutil56 libavformat58 libmpg123-0 \
+    libvpx7 libx264-163 libx265-199 \
     libcairo2-dev libgirepository1.0-dev \
     # OpenCV (C++ headers for OCSort + Python bindings)
     python3-opencv libopencv-dev \
@@ -42,8 +46,10 @@ RUN pip3 install --upgrade pip \
 COPY requirements.txt .
 
 RUN pip3 install --upgrade pip setuptools wheel \
-    && pip3 install cython ninja \
-    && pip3 install --no-cache-dir -r requirements.txt
+    && pip3 install --retries 10 --timeout 120 cython ninja \
+    && pip3 install --retries 10 --timeout 120 --no-cache-dir -r requirements.txt
+
+RUN pip3 install --retries 10 --timeout 120 --no-deps torchvision
 
 # =========================================================
 # 4. Copy Application Code

@@ -4,7 +4,7 @@ Pipeline Manager for DeepStream.
 Builds and owns the local multi-source DeepStream pipeline lifecycle.
 """
 
-from typing import Dict
+from typing import Any, Dict
 
 import gi
 
@@ -71,6 +71,11 @@ class PipelineManager:
                 pipeline_cfg.decode.decoder,
                 f"decoder-{source.id}",
             )
+            if pipeline_cfg.decode.decoder != "nvv4l2decoder":
+                self.elements[f"{prefix}_decode_conv"] = ElementFactory.create(
+                    pipeline_cfg.decode.converter,
+                    f"decode-conv-{source.id}",
+                )
 
     def _create_core_elements(self, pipeline_cfg: PipelineConfig, yolox_cfg: YOLOXConfig) -> None:
         """Create nvstreammux, nvinfer, and nvstreamdemux elements."""
@@ -91,6 +96,36 @@ class PipelineManager:
         )
         self.elements["pgie"].set_property("model-engine-file", yolox_cfg.engine_path)
         self.elements["demux"] = ElementFactory.create("nvstreamdemux", "stream-demuxer")
+        self._log_core_runtime_properties()
+
+    def _get_runtime_property(self, element_name: str, property_name: str) -> Any:
+        """Return an actual GStreamer property value when the element exposes it."""
+        element = self.elements[element_name]
+        if element.find_property(property_name) is None:
+            return "<not exposed as Gst property>"
+        return element.get_property(property_name)
+
+    def _log_core_runtime_properties(self) -> None:
+        """Log actual GStreamer properties after they are applied to core elements."""
+        runtime_properties: Dict[str, Dict[str, Any]] = {
+            "muxer": {
+                "width": self._get_runtime_property("muxer", "width"),
+                "height": self._get_runtime_property("muxer", "height"),
+                "batch-size": self._get_runtime_property("muxer", "batch-size"),
+                "batched-push-timeout": self._get_runtime_property("muxer", "batched-push-timeout"),
+            },
+            "pgie": {
+                "config-file-path": self._get_runtime_property("pgie", "config-file-path"),
+                "model-engine-file": self._get_runtime_property("pgie", "model-engine-file"),
+                "batch-size": self._get_runtime_property("pgie", "batch-size"),
+                "unique-id": self._get_runtime_property("pgie", "unique-id"),
+            },
+        }
+        logger.info("[PipelineRuntime] ===== ACTUAL GST PROPERTIES AFTER SET =====")
+        for element_name, properties in runtime_properties.items():
+            for property_name, value in properties.items():
+                logger.info(f"[PipelineRuntime] {element_name}.{property_name} = {value}")
+        logger.info("[PipelineRuntime] ===========================================")
 
     def _create_output_elements(self, sources_cfg: SourcesConfig, pipeline_cfg: PipelineConfig) -> None:
         """Create one output branch per source."""
@@ -102,10 +137,27 @@ class PipelineManager:
                 f"output-conv-{source.id}",
             )
             self.elements[f"{prefix}_osd"] = ElementFactory.create("nvdsosd", f"output-osd-{source.id}")
+            if pipeline_cfg.output.encoder == "x264enc":
+                self.elements[f"{prefix}_post_osd_conv"] = ElementFactory.create(
+                    "nvvideoconvert",
+                    f"post-osd-conv-{source.id}",
+                )
+                self.elements[f"{prefix}_encoder_caps"] = ElementFactory.create_and_configure(
+                    "capsfilter",
+                    f"encoder-caps-{source.id}",
+                    {"caps": Gst.Caps.from_string("video/x-raw,format=I420")},
+                )
+            encoder_properties: Dict[str, Any] = {"bitrate": pipeline_cfg.output.bitrate}
+            if pipeline_cfg.output.encoder == "x264enc":
+                encoder_properties = {
+                    "bitrate": max(1, pipeline_cfg.output.bitrate // 1000),
+                    "speed-preset": "ultrafast",
+                    "tune": "zerolatency",
+                }
             self.elements[f"{prefix}_encoder"] = ElementFactory.create_and_configure(
                 pipeline_cfg.output.encoder,
                 f"output-encoder-{source.id}",
-                {"bitrate": pipeline_cfg.output.bitrate},
+                encoder_properties,
             )
             self.elements[f"{prefix}_parse"] = ElementFactory.create(
                 pipeline_cfg.output.parser,
@@ -120,6 +172,24 @@ class PipelineManager:
                 f"file-sink-{source.id}",
                 {"location": source.output, "sync": False, "async": False},
             )
+            self._log_output_runtime_properties(source.id)
+
+    def _log_output_runtime_properties(self, source_id: int) -> None:
+        """Log actual GStreamer properties after they are applied to one output branch."""
+        prefix = f"out_{source_id}"
+        runtime_properties: Dict[str, Dict[str, Any]] = {
+            f"{prefix}_encoder": {
+                "bitrate": self.elements[f"{prefix}_encoder"].get_property("bitrate"),
+            },
+            f"{prefix}_sink": {
+                "location": self.elements[f"{prefix}_sink"].get_property("location"),
+                "sync": self.elements[f"{prefix}_sink"].get_property("sync"),
+                "async": self.elements[f"{prefix}_sink"].get_property("async"),
+            },
+        }
+        for element_name, properties in runtime_properties.items():
+            for property_name, value in properties.items():
+                logger.info(f"[PipelineRuntime] {element_name}.{property_name} = {value}")
 
     def _add_all_elements(self) -> None:
         """Add every created element to the pipeline."""
@@ -140,12 +210,18 @@ class PipelineManager:
             demux.connect("pad-added", self._on_demux_pad_added, parser)
             self._link(parser, decoder)
 
+            upstream = decoder
+            if f"{prefix}_decode_conv" in self.elements:
+                decode_conv = self.elements[f"{prefix}_decode_conv"]
+                self._link(decoder, decode_conv)
+                upstream = decode_conv
+
             sink_pad = muxer.get_request_pad(f"sink_{source.id}")
-            src_pad = decoder.get_static_pad("src")
+            src_pad = upstream.get_static_pad("src")
             if not sink_pad or not src_pad:
-                raise RuntimeError(f"Unable to get muxer/decoder pad for source {source.id}")
+                raise RuntimeError(f"Unable to get muxer input pad for source {source.id}")
             if src_pad.link(sink_pad) != Gst.PadLinkReturn.OK:
-                raise RuntimeError(f"Failed to link decoder source {source.id} to muxer")
+                raise RuntimeError(f"Failed to link source {source.id} to muxer")
 
     def _link_core_branch(self) -> None:
         """Link muxer, nvinfer, and demux."""
@@ -166,7 +242,12 @@ class PipelineManager:
 
             self._link(self.elements[f"{prefix}_queue"], self.elements[f"{prefix}_conv"])
             self._link(self.elements[f"{prefix}_conv"], self.elements[f"{prefix}_osd"])
-            self._link(self.elements[f"{prefix}_osd"], self.elements[f"{prefix}_encoder"])
+            encoder_input = self.elements[f"{prefix}_osd"]
+            if f"{prefix}_post_osd_conv" in self.elements:
+                self._link(encoder_input, self.elements[f"{prefix}_post_osd_conv"])
+                self._link(self.elements[f"{prefix}_post_osd_conv"], self.elements[f"{prefix}_encoder_caps"])
+                encoder_input = self.elements[f"{prefix}_encoder_caps"]
+            self._link(encoder_input, self.elements[f"{prefix}_encoder"])
             self._link(self.elements[f"{prefix}_encoder"], self.elements[f"{prefix}_parse"])
             self._link(self.elements[f"{prefix}_parse"], self.elements[f"{prefix}_mux"])
             self._link(self.elements[f"{prefix}_mux"], self.elements[f"{prefix}_sink"])

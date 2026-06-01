@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   ai_core:
     image: manhmitcf/dat_lab_management_aicore:windows-local

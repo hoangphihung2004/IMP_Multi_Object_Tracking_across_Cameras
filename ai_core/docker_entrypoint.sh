@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 set -e
 
 # Ensure onnxscript is installed for PyTorch ONNX exporter

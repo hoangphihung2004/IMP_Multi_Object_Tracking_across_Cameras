@@ -12,6 +12,7 @@ Accepts YOLOXConfig and SystemConfig Pydantic models for typed control,
 with fallback to yolox_config.json → env vars → hardcoded defaults.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -86,6 +87,49 @@ def _run(cmd: list, description: str) -> bool:
         return False
 
 
+def _log_model_conversion_runtime_config(
+    *,
+    engine_path: str,
+    onnx_path: str,
+    pth_path: str,
+    exp_file: str,
+    fp16: bool,
+    workspace_mb: int,
+) -> None:
+    """Log actual model conversion values after env and config precedence are resolved."""
+    logger.info("[ModelRuntime] ===== ACTUAL MODEL CONVERSION VALUES =====")
+    logger.info(f"[ModelRuntime] cwd = {os.getcwd()}")
+    logger.info(f"[ModelRuntime] engine_path = {engine_path}")
+    logger.info(f"[ModelRuntime] engine_exists = {os.path.isfile(engine_path)}")
+    logger.info(f"[ModelRuntime] onnx_path = {onnx_path}")
+    logger.info(f"[ModelRuntime] onnx_exists = {os.path.isfile(onnx_path)}")
+    logger.info(f"[ModelRuntime] pth_path = {pth_path}")
+    logger.info(f"[ModelRuntime] pth_exists = {os.path.isfile(pth_path)}")
+    logger.info(f"[ModelRuntime] exp_file = {exp_file}")
+    logger.info(f"[ModelRuntime] exp_exists = {os.path.isfile(exp_file)}")
+    logger.info(f"[ModelRuntime] fp16 = {fp16}")
+    logger.info(f"[ModelRuntime] workspace_mb = {workspace_mb}")
+    logger.info(f"[ModelRuntime] trtexec = {_find_trtexec()}")
+    logger.info("[ModelRuntime] =========================================")
+
+
+def _log_export_runtime_config(config_path: str, ckpt_path: str, onnx_path: str, opset: int) -> None:
+    """Log actual export arguments and architecture values used by export_onnx.py."""
+    logger.info("[ModelRuntime] ===== ACTUAL ONNX EXPORT VALUES =====")
+    logger.info(f"[ModelRuntime] export.config_path = {config_path}")
+    logger.info(f"[ModelRuntime] export.config_exists = {os.path.isfile(config_path)}")
+    logger.info(f"[ModelRuntime] export.ckpt_path = {ckpt_path}")
+    logger.info(f"[ModelRuntime] export.ckpt_exists = {os.path.isfile(ckpt_path)}")
+    logger.info(f"[ModelRuntime] export.onnx_path = {onnx_path}")
+    logger.info(f"[ModelRuntime] export.opset = {opset}")
+    if os.path.isfile(config_path):
+        with open(config_path, "r", encoding="utf-8") as file:
+            config = json.load(file)
+        for key in ("num_classes", "depth", "width", "tsize", "conf", "nms", "rgb_means", "rgb_std"):
+            logger.info(f"[ModelRuntime] export.{key} = {config.get(key)}")
+    logger.info("[ModelRuntime] ===================================")
+
+
 # ──────────────────────────────────────────────────────────────
 # Stage 1: PTH → ONNX
 # ──────────────────────────────────────────────────────────────
@@ -120,6 +164,7 @@ def convert_pth_to_onnx(
     if os.path.isfile(config_path):
         cmd.extend(["--config", config_path])
         logger.info(f"[ModelConverter] Using config mode: {config_path}")
+        _log_export_runtime_config(config_path, pth_path, onnx_path, opset)
     elif exp_file and os.path.isfile(exp_file):
         cmd.extend(["-f", exp_file])
         logger.info(f"[ModelConverter] Using legacy exp_file mode: {exp_file}")
@@ -214,6 +259,14 @@ def check_and_convert_models(yolox_cfg=None, system_cfg=None) -> None:
     logger.info(f"  Exp    : {exp_file}")
     logger.info(f"  FP16   : {fp16}")
     logger.info("=" * 60)
+    _log_model_conversion_runtime_config(
+        engine_path=engine_path,
+        onnx_path=onnx_path,
+        pth_path=pth_path,
+        exp_file=exp_file,
+        fp16=fp16,
+        workspace_mb=workspace,
+    )
 
     # ── Step 1: Engine exists → done ─────────────────────────
     if os.path.isfile(engine_path):

@@ -1,6 +1,7 @@
 # Exclude large/unnecessary files from Docker build context
 pretrained/
 videos/
+output/
 logs/
 YOLOX_outputs/
 

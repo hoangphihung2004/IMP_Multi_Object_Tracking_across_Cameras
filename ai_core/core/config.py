@@ -125,6 +125,7 @@ class DecodeConfig(BaseModel):
 
     parser: str = "h264parse"
     decoder: str = "nvv4l2decoder"
+    converter: str = "nvvideoconvert"
 
     model_config = ConfigDict(extra="forbid")
 
