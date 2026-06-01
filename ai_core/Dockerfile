@@ -21,14 +21,19 @@ RUN rm -f /etc/apt/sources.list.d/*librealsense* \
     # GStreamer Python Bindings (pyds/gi) + WSL2 software codec fallback
     python3-gi python3-gst-1.0 gir1.2-gst-plugins-base-1.0 \
     gstreamer1.0-libav gstreamer1.0-plugins-ugly \
-    libavcodec58 libavutil56 libavformat58 libmpg123-0 \
-    libvpx7 libx264-163 libx265-199 \
+    libavcodec58 libavutil56 libavformat58 libswresample3 libswscale5 libpostproc55 \
+    libmpg123-0 libvpx7 libx264-163 libx265-199 libmpeg2-4 libmpeg2encpp-2.1-0 \
     libcairo2-dev libgirepository1.0-dev \
     # OpenCV (C++ headers for OCSort + Python bindings)
     python3-opencv libopencv-dev \
     # Eigen3 (OCSort KalmanFilter)
     libeigen3-dev \
     # CUDA tools (nvjpegdec needs this)
+    && apt-get install -y --no-install-recommends --reinstall \
+    gstreamer1.0-libav gstreamer1.0-plugins-ugly \
+    libavcodec58 libavutil56 libavformat58 libswresample3 libswscale5 libpostproc55 \
+    libx264-163 libx265-199 libmpeg2-4 libmpeg2encpp-2.1-0 \
+    && ldconfig \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
