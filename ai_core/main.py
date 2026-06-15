@@ -1,111 +1,150 @@
-"""
-Aura Analytics - Main Entry Point.
-
-Local DeepStream tracking pipeline for Windows/WSL2 Docker.
-"""
-
-import signal
-import sys
-from typing import Dict
-
+import os
+import time
+import cv2
+import numpy as np
+from datetime import datetime, timezone
 from loguru import logger
 
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    pass
-
-from core.config import ConfigManager
-from core.model_converter import check_and_convert_models
-from services.analytics.tracking_service import TrackingService
-from services.pipeline.manager import PipelineManager
-from services.pipeline.probe import AnalyticsProbe
+from config.data_config import OCSortConfig
+from services.tracking_service import TrackingService
+from utils.visualize import sample_colors
 
 
-class AuraAnalyticsApp:
-    """Main application for the local DeepStream tracking runtime."""
+def draw_tracking_results(frame, bboxes, track_ids, fps_info):
+    """Draw bounding boxes and tracking info on frame."""
+    vis_frame = frame.copy()
 
-    def __init__(self) -> None:
-        """Load configuration and prepare the pipeline manager."""
-        self.pipeline_manager = PipelineManager()
-        self.services: Dict[str, object] = {}
+    # Draw each tracked object
+    for bbox, track_id in zip(bboxes, track_ids):
+        x1, y1, w, h = bbox
+        x2 = int(x1 + w)
+        y2 = int(y1 + h)
+        x1, y1 = int(x1), int(y1)
 
-        self.system_cfg = ConfigManager.get_system_config()
-        self.yolox_cfg = ConfigManager.get_yolox_config()
-        self.ocsort_cfg = ConfigManager.get_ocsort_config()
-        self.sources_cfg = ConfigManager.get_sources_config()
-        self.pipeline_cfg = ConfigManager.get_pipeline_config()
+        # Get color based on track_id
+        color = sample_colors[int(track_id) % len(sample_colors)]
 
-        ConfigManager.validate_runtime_config(self.sources_cfg, self.pipeline_cfg)
-        ConfigManager.log_loaded_config(
-            system_cfg=self.system_cfg,
-            yolox_cfg=self.yolox_cfg,
-            ocsort_cfg=self.ocsort_cfg,
-            sources_cfg=self.sources_cfg,
-            pipeline_cfg=self.pipeline_cfg,
-        )
+        # Draw bounding box
+        cv2.rectangle(vis_frame, (x1, y1), (x2, y2), color=color, thickness=2)
 
-    def _setup_services(self) -> None:
-        """Initialize one tracking service per source."""
-        logger.info("[App] Initializing tracking services...")
-        self.services["tracking"] = {
-            source.id: TrackingService(config=self.ocsort_cfg)
-            for source in self.sources_cfg.sources
-        }
-        logger.success(f"[App] Initialized {len(self.services['tracking'])} tracker instances.")
+        # Draw track ID
+        label = f"ID:{int(track_id)}"
+        cv2.putText(vis_frame, label, (x1 + 5, y1 + 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-    def _setup_pipeline(self) -> None:
-        """Build the DeepStream pipeline and attach the tracking probe."""
-        probe = AnalyticsProbe(
-            tracking_services=self.services["tracking"],
-            tracking_config=self.ocsort_cfg,
-            osd_config=self.pipeline_cfg.osd,
-        )
+    # Draw FPS and tracking count info
+    info_text = f"FPS: {fps_info:.1f} | Tracks: {len(track_ids)}"
+    cv2.putText(vis_frame, info_text, (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
-        self.pipeline_manager.build_pipeline(
-            sources_cfg=self.sources_cfg,
-            pipeline_cfg=self.pipeline_cfg,
-            yolox_cfg=self.yolox_cfg,
-        )
-        self.pipeline_manager.attach_probe(probe)
+    return vis_frame
 
-    def run(self) -> None:
-        """Main execution entry point."""
-        logger.info("=== Starting Local DeepStream Tracking Application ===")
 
-        try:
-            check_and_convert_models(
-                yolox_cfg=self.yolox_cfg,
-                system_cfg=self.system_cfg,
+def main():
+    logger.info("Starting tracking application...")
+
+    # Paths
+    video_path = "videos/demo.mp4"
+    output_path = "output/result.mp4"
+    os.makedirs("output", exist_ok=True)
+
+    # Setup tracking service
+    logger.info("Initializing tracking service...")
+    tracking_cfg = OCSortConfig("config/tracking_config.json")
+    tracking_service = TrackingService(args=tracking_cfg)
+    logger.success("Tracking service initialized.")
+
+    # Open video capture
+    logger.info(f"Opening video: {video_path}")
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        logger.error(f"Failed to open video: {video_path}")
+        raise RuntimeError(f"Cannot open video {video_path}")
+
+    # Get video properties
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    logger.info(f"Video info: {width}x{height}, {fps:.2f} FPS, {total_frames} frames")
+
+    # Setup video writer
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    video_writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    if not video_writer.isOpened():
+        logger.error("Failed to create video writer")
+        raise RuntimeError("Cannot create video writer")
+
+    logger.info(f"Output will be saved to: {output_path}")
+
+    # Processing loop
+    frame_id = 0
+    start_time = time.time()
+
+    logger.info("Starting frame processing...")
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                logger.info("End of video reached")
+                break
+
+            frame_id += 1
+
+            # Run tracking
+            bboxes_tlwh, track_ids, avg_time = tracking_service.predict(
+                frame_id=frame_id,
+                frame=frame,
+                box_type="tlwh"
             )
-            self._setup_services()
-            self._setup_pipeline()
-            self.pipeline_manager.run()
-        except KeyboardInterrupt:
-            logger.warning("[App] Interrupted by user (SIGINT).")
-        except Exception as exc:
-            logger.exception(f"[App] Fatal error during execution: {exc}")
-        finally:
-            self.shutdown()
 
-    def shutdown(self) -> None:
-        """Graceful resource cleanup."""
-        logger.info("[App] Shutdown sequence initiated...")
-        self.pipeline_manager.stop()
-        logger.success("=== Local DeepStream Tracking Shutdown Complete ===")
+            # Calculate current FPS
+            current_fps = 1.0 / max(1e-5, avg_time) if avg_time else fps
 
+            # Draw tracking results
+            vis_frame = draw_tracking_results(frame, bboxes_tlwh, track_ids, current_fps)
 
-def signal_handler(sig, frame) -> None:
-    """Bridge OS signals to the application shutdown."""
-    logger.warning(f"[System] Signal {sig} received.")
-    sys.exit(0)
+            # Write to output video
+            video_writer.write(vis_frame)
+
+            # Log progress every 30 frames
+            if frame_id % 30 == 0:
+                progress = (frame_id / total_frames) * 100 if total_frames > 0 else 0
+                logger.info(
+                    f"Frame {frame_id}/{total_frames} ({progress:.1f}%) | "
+                    f"Tracks: {len(track_ids)} | FPS: {current_fps:.1f}"
+                )
+
+    except KeyboardInterrupt:
+        logger.warning("Processing interrupted by user")
+
+    except Exception as e:
+        logger.exception(f"Error during processing: {e}")
+        raise
+
+    finally:
+        # Cleanup
+        logger.info("Cleaning up resources...")
+        cap.release()
+        video_writer.release()
+        cv2.destroyAllWindows()
+
+    # Final statistics
+    end_time = time.time()
+    total_time = end_time - start_time
+    avg_fps = frame_id / total_time if total_time > 0 else 0
+
+    logger.success(
+        f"Processing completed!\n"
+        f"  Total frames: {frame_id}\n"
+        f"  Total time: {total_time:.2f}s\n"
+        f"  Average FPS: {avg_fps:.2f}\n"
+        f"  Output saved: {output_path}"
+    )
 
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    app = AuraAnalyticsApp()
-    app.run()
+    main()

@@ -1,4 +1,4 @@
-#include "../include/KalmanFilter.hpp"
+﻿#include "../include/KalmanFilter.hpp"
 #include <iostream>
 namespace ocsort {
     KalmanFilterNew::KalmanFilterNew() {};
@@ -26,9 +26,7 @@ namespace ocsort {
     };
     void KalmanFilterNew::predict() {
         x = F * x;
-        // BUG FIX: Removed comma operator `((F * P), F.transpose())` which evaluated to just F.transpose().
-        // Correctly calculates: F * P * F_transpose. This matches the Python F @ P @ F.T
-        P = _alpha_sq * (F * P * F.transpose()) + Q;
+        P = _alpha_sq * ((F * P), F.transpose()) + Q;
         x_prior = x;
         P_prior = P;
     }
@@ -123,14 +121,10 @@ namespace ocsort {
             double y2 = box2[1];
             double w1 = std::sqrt(box1[2] * box1[3]);
             double h1 = std::sqrt(box1[2] / box1[3]);
-            
-            // BUG FIX: w2 and h2 must be calculated from box2 (the new observation), not box1.
-            double w2 = std::sqrt(box2[2] * box2[3]);
-            double h2 = std::sqrt(box2[2] / box2[3]);
-            
+            double w2 = std::sqrt(box1[2] * box1[3]);
+            double h2 = std::sqrt(box1[2] / box1[3]);
             double dx = (x2 - x1) / time_gap;
-            // BUG FIX: dy should be (y2 - y1) instead of (y1 - y2) so that the virtual trajectory moves in the correct direction.
-            double dy = (y2 - y1) / time_gap;
+            double dy = (y1 - y2) / time_gap;
             double dw = (w2 - w1) / time_gap;
             double dh = (h2 - h1) / time_gap;
 

@@ -130,7 +130,6 @@ dmypy.json
 
 # output
 docs/api
-output/
 .code-workspace.code-workspace
 *.pkl
 *.npy
@@ -158,4 +157,4 @@ doc/
 
 .qodo/
 demo/
-ARCHITECTURE.md
+output/

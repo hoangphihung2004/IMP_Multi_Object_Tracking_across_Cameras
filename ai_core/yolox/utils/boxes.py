@@ -3,76 +3,32 @@
 # Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
 
 import numpy as np
+
 import torch
 import torchvision
-from numba import njit
+import torch.nn.functional as F
 
 __all__ = [
     "filter_box",
     "postprocess",
     "bboxes_iou",
+    "matrix_iou",
     "adjust_box_anns",
     "xyxy2xywh",
     "xyxy2cxcywh",
 ]
 
+
 def filter_box(output, scale_range):
+    """
+    output: (N, 5+class) shape
+    """
     min_scale, max_scale = scale_range
     w = output[:, 2] - output[:, 0]
     h = output[:, 3] - output[:, 1]
     keep = (w * h > min_scale * min_scale) & (w * h < max_scale * max_scale)
     return output[keep]
 
-@njit
-def bboxes_iou(a, b): # Đã đổi tên từ matrix_iou thành bboxes_iou
-    n = a.shape[0]
-    m = b.shape[0]
-    ious = np.zeros((n, m), dtype=np.float32)
-    for i in range(n):
-        area_a = (a[i, 2] - a[i, 0]) * (a[i, 3] - a[i, 1])
-        for j in range(m):
-            area_b = (b[j, 2] - b[j, 0]) * (b[j, 3] - b[j, 1])
-            xx1 = max(a[i, 0], b[j, 0])
-            yy1 = max(a[i, 1], b[j, 1])
-            xx2 = min(a[i, 2], b[j, 2])
-            yy2 = min(a[i, 3], b[j, 3])
-            w = max(0.0, xx2 - xx1)
-            h = max(0.0, yy2 - yy1)
-            inter = w * h
-            union = area_a + area_b - inter
-            if union > 0:
-                ious[i, j] = inter / union
-    return ious
-
-@njit
-def adjust_box_anns(bbox, scale_ratio, padw, padh, w_max, h_max):
-    res = bbox.copy()
-    for i in range(res.shape[0]):
-        res[i, 0] = res[i, 0] * scale_ratio + padw
-        res[i, 2] = res[i, 2] * scale_ratio + padw
-        res[i, 1] = res[i, 1] * scale_ratio + padh
-        res[i, 3] = res[i, 3] * scale_ratio + padh
-    return res
-
-@njit
-def xyxy2xywh(bboxes):
-    res = bboxes.copy()
-    for i in range(res.shape[0]):
-        res[i, 2] = res[i, 2] - res[i, 0]
-        res[i, 3] = res[i, 3] - res[i, 1]
-    return res
-
-@njit
-def xyxy2cxcywh(bboxes):
-    res = bboxes.copy()
-    for i in range(res.shape[0]):
-        w = res[i, 2] - res[i, 0]
-        h = res[i, 3] - res[i, 1]
-        res[i, 0] = res[i, 0] + w * 0.5
-        res[i, 1] = res[i, 1] + h * 0.5
-        res[i, 2] = w
-        res[i, 3] = h
-    return res
 
 def postprocess(prediction, num_classes, conf_thre=0.7, nms_thre=0.45):
     box_corner = prediction.new(prediction.shape)
@@ -84,27 +40,99 @@ def postprocess(prediction, num_classes, conf_thre=0.7, nms_thre=0.45):
 
     output = [None for _ in range(len(prediction))]
     for i, image_pred in enumerate(prediction):
+
+        # If none are remaining => process next image
         if not image_pred.size(0):
             continue
+        # Get score and class with highest confidence
         class_conf, class_pred = torch.max(
             image_pred[:, 5 : 5 + num_classes], 1, keepdim=True
         )
+
         conf_mask = (image_pred[:, 4] * class_conf.squeeze() >= conf_thre).squeeze()
+        # _, conf_mask = torch.topk((image_pred[:, 4] * class_conf.squeeze()), 1000)
+        # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred)
         detections = torch.cat((image_pred[:, :5], class_conf, class_pred.float()), 1)
         detections = detections[conf_mask]
         if not detections.size(0):
             continue
         
-        if len(detections.shape) > 1 and detections.shape[1] == 1:
+        if detections.shape[1] == 1:
             detections = detections.squeeze(0)
-            
+        
+        # REMOVED try-except block with pdb to see actual error
         nms_out_index = torchvision.ops.batched_nms(
             detections[:, :4],
             detections[:, 4] * detections[:, 5],
             detections[:, 6],
             nms_thre,
         )
+
         detections = detections[nms_out_index]
-        output[i] = detections if output[i] is None else torch.cat((output[i], detections))
+        if output[i] is None:
+            output[i] = detections
+        else:
+            output[i] = torch.cat((output[i], detections))
 
     return output
+
+
+def bboxes_iou(bboxes_a, bboxes_b, xyxy=True):
+    if bboxes_a.shape[1] != 4 or bboxes_b.shape[1] != 4:
+        raise IndexError
+
+    if xyxy:
+        tl = torch.max(bboxes_a[:, None, :2], bboxes_b[:, :2])
+        br = torch.min(bboxes_a[:, None, 2:], bboxes_b[:, 2:])
+        area_a = torch.prod(bboxes_a[:, 2:] - bboxes_a[:, :2], 1)
+        area_b = torch.prod(bboxes_b[:, 2:] - bboxes_b[:, :2], 1)
+    else:
+        tl = torch.max(
+            (bboxes_a[:, None, :2] - bboxes_a[:, None, 2:] / 2),
+            (bboxes_b[:, :2] - bboxes_b[:, 2:] / 2),
+        )
+        br = torch.min(
+            (bboxes_a[:, None, :2] + bboxes_a[:, None, 2:] / 2),
+            (bboxes_b[:, :2] + bboxes_b[:, 2:] / 2),
+        )
+
+        area_a = torch.prod(bboxes_a[:, 2:], 1)
+        area_b = torch.prod(bboxes_b[:, 2:], 1)
+    en = (tl < br).type(tl.type()).prod(dim=2)
+    area_i = torch.prod(br - tl, 2) * en  # * ((tl < br).all())
+    return area_i / (area_a[:, None] + area_b - area_i)
+
+
+def matrix_iou(a, b):
+    """
+    return iou of a and b, numpy version for data augenmentation
+    """
+    lt = np.maximum(a[:, np.newaxis, :2], b[:, :2])
+    rb = np.minimum(a[:, np.newaxis, 2:], b[:, 2:])
+
+    area_i = np.prod(rb - lt, axis=2) * (lt < rb).all(axis=2)
+    area_a = np.prod(a[:, 2:] - a[:, :2], axis=1)
+    area_b = np.prod(b[:, 2:] - b[:, :2], axis=1)
+    return area_i / (area_a[:, np.newaxis] + area_b - area_i + 1e-12)
+
+
+def adjust_box_anns(bbox, scale_ratio, padw, padh, w_max, h_max):
+    #bbox[:, 0::2] = np.clip(bbox[:, 0::2] * scale_ratio + padw, 0, w_max)
+    #bbox[:, 1::2] = np.clip(bbox[:, 1::2] * scale_ratio + padh, 0, h_max)
+    bbox[:, 0::2] = bbox[:, 0::2] * scale_ratio + padw
+    bbox[:, 1::2] = bbox[:, 1::2] * scale_ratio + padh
+    return bbox
+
+
+def xyxy2xywh(bboxes):
+    bboxes[:, 2] = bboxes[:, 2] - bboxes[:, 0]
+    bboxes[:, 3] = bboxes[:, 3] - bboxes[:, 1]
+    return bboxes
+
+
+def xyxy2cxcywh(bboxes):
+    bboxes[:, 2] = bboxes[:, 2] - bboxes[:, 0]
+    bboxes[:, 3] = bboxes[:, 3] - bboxes[:, 1]
+    bboxes[:, 0] = bboxes[:, 0] + bboxes[:, 2] * 0.5
+    bboxes[:, 1] = bboxes[:, 1] + bboxes[:, 3] * 0.5
+    return bboxes
