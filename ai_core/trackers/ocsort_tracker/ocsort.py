@@ -315,7 +315,8 @@ class OCSort(object):
                 d = trk.last_observation[:4]
             if (trk.time_since_update < 1) and (trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits):
                 # +1 as MOT benchmark requires positive
-                ret.append(np.concatenate((d, [trk.id+1])).reshape(1, -1))
+                score = trk.last_observation[4] if len(trk.last_observation) > 4 else 1.0
+                ret.append(np.concatenate((d, [trk.id+1], [score])).reshape(1, -1))
             i -= 1
             # remove dead tracklet
             if(trk.time_since_update > self.max_age):
@@ -427,5 +428,4 @@ class OCSort(object):
         if(len(ret)>0):
             return np.concatenate(ret)
         return np.empty((0, 7))
-
 

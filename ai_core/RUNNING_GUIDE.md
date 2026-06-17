@@ -65,7 +65,7 @@ docker build -t yolox-ocsort:latest .
 ### 1.2. Run Docker với GPU Support
 
 ```bash
-docker run -it --gpus all -v "<path-to-project>/ai_core:/workspace/ai_core" yolox-ocsort:latest bash
+docker run -it --gpus all -v "D:\IMP_Multi_Object_Tracking_across_Cameras\ai_core:/workspace/ai_core" yolox-ocsort:latest bash
 ```
 
 **Ví dụ**:

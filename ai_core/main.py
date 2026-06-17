@@ -2,7 +2,6 @@ import os
 import time
 import cv2
 import numpy as np
-from datetime import datetime, timezone
 from loguru import logger
 
 from config.data_config import OCSortConfig

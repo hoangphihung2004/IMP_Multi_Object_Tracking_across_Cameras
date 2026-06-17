@@ -157,12 +157,21 @@ class TrackingService:
                                    self.yolo.args.fp16)
 
         self.tracker = OCSort(det_thresh=self.yolo.args.track_thresh,
+                              max_age=self.yolo.args.max_age,
+                              min_hits=self.yolo.args.min_hits,
                               iou_threshold=self.yolo.args.iou_thresh,
+                              delta_t=self.yolo.args.delta_t,
+                              asso_func=self.yolo.args.asso_func,
+                              inertia=self.yolo.args.inertia,
                               use_byte=self.yolo.args.use_byte)
 
         self.timer = Timer()
 
     def predict(self, frame_id, frame, box_type="xyxy"):
+        bboxes, track_ids, _, avg_time = self.predict_with_scores(frame_id, frame, box_type)
+        return bboxes, track_ids, avg_time
+
+    def predict_with_scores(self, frame_id, frame, box_type="xyxy"):
 
         if frame_id % 30 == 0:
             logger.info('Processing frame {} ({:.2f} fps)'.format(frame_id, 1. / max(1e-5, self.timer.average_time)))
@@ -170,6 +179,7 @@ class TrackingService:
         outputs, img_info = self.predictor.inference(frame, self.timer)
         bboxes = []
         track_ids = []
+        scores = []
 
         if outputs[0] is not None:
 
@@ -182,10 +192,12 @@ class TrackingService:
                 tlwh = [t[0], t[1], t[2] - t[0], t[3] - t[1]]
                 xyxy = [t[0], t[1], t[2], t[3]]
                 tid = t[4]
+                score = float(t[5]) if len(t) > 5 else 1.0
                 vertical = tlwh[2] / tlwh[3] > self.yolo.args.aspect_ratio_thresh
                 if tlwh[2] * tlwh[3] > self.yolo.args.min_box_area and not vertical:
                     bboxes.append(xyxy if box_type == "xyxy" else tlwh)
                     track_ids.append(tid)
+                    scores.append(score)
             self.timer.toc()
 
-        return bboxes, track_ids, self.timer.average_time
+        return bboxes, track_ids, scores, self.timer.average_time

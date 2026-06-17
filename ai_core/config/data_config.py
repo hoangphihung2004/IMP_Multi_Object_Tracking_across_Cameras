@@ -25,6 +25,11 @@ class OCSortConfig:
     track_thresh: float = 0.6
     iou_thresh: float = 0.3
     use_byte: bool = False
+    max_age: int = 30
+    min_hits: int = 3
+    delta_t: int = 3
+    asso_func: str = "iou"
+    inertia: float = 0.2
     aspect_ratio_thresh: float = 1.6
     min_box_area: float = 10
 
@@ -44,4 +49,3 @@ class OCSortConfig:
                 setattr(self, key, value)
             else:
                 print(f"Unknown config key: {key}")
-
